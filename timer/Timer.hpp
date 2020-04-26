@@ -7,7 +7,7 @@
 #include <functional>
 #include <iostream>
 #include <chrono>
-
+#include<tuple>
 using TimeInSec  = std::chrono::seconds;
 using TimeInNSec = std::chrono::nanoseconds;
 
@@ -24,12 +24,12 @@ struct TimerConfiguration
     TimerFrequency tFreq = TimerFrequency::Once;
 };
 
-template<typename Callback, typename Context>
+template<typename Callback, typename ... Context>
 class Timer
 {
     public:
         explicit Timer(Callback cbFunc);
-        bool create(Context ctx, const TimerConfiguration&);
+        bool create(const TimerConfiguration&, Context ... ctx);
         bool start();
         bool stop();
         bool reset(const TimerConfiguration&);
@@ -41,26 +41,26 @@ class Timer
         bool setTime(const struct itimerspec&) const;
         void destroy();
         Callback callback_;
-        Context ctx_;
+        std::tuple<Context...> ctx_;
         timer_t tid_;
         TimerConfiguration timerConfig_;
 };
 
-template<typename Callback, typename Context>
-Timer<Callback, Context>::Timer(Callback cbFunc) : callback_(cbFunc)
+template<typename Callback, typename ... Context>
+Timer<Callback, Context ...>::Timer(Callback cbFunc) : callback_(cbFunc)
 {
 }
 
-template<typename Callback, typename Context>
-Timer<Callback, Context>::~Timer()
+template<typename Callback, typename ... Context>
+Timer<Callback, Context ...>::~Timer()
 {
     destroy();
 }
 
-template<typename Callback, typename Context>
-bool Timer<Callback, Context>::create(Context ctx, const TimerConfiguration& timerConfig)
+template<typename Callback, typename ... Context>
+bool Timer<Callback, Context ...>::create(const TimerConfiguration& timerConfig, Context ... ctx)
 {
-    ctx_ = ctx;
+    ctx_ = std::make_tuple(ctx...);
     timerConfig_ = timerConfig;
 
     struct sigevent s_event = {0};
@@ -69,14 +69,14 @@ bool Timer<Callback, Context>::create(Context ctx, const TimerConfiguration& tim
     si_val.sival_ptr = this;
     s_event.sigev_notify = SIGEV_THREAD;
     s_event.sigev_value = si_val;
-    s_event.sigev_notify_function = &Timer<Callback, Context>::syscallTimerExpiryFunction;
+    s_event.sigev_notify_function = &Timer<Callback, Context ...>::syscallTimerExpiryFunction;
     int retVal = timer_create(CLOCK_MONOTONIC, &s_event, &tid_);
 
     return (0 == retVal);
 }
 
-template<typename Callback, typename Context>
-bool Timer<Callback, Context>::start()
+template<typename Callback, typename ... Context>
+bool Timer<Callback, Context ...>::start()
 {
     struct itimerspec timerVal = {{0, 0}, {timerConfig_.timeInSec.count(), timerConfig_.timeInNSec.count()}};
 
@@ -89,43 +89,43 @@ bool Timer<Callback, Context>::start()
     return setTime(timerVal);
 }
 
-template<typename Callback, typename Context>
-bool Timer<Callback, Context>::stop()
+template<typename Callback, typename ... Context>
+bool Timer<Callback, Context ...>::stop()
 {
     struct itimerspec stopTimerVal = {{0, 0}, {0, 0}};
     return setTime(stopTimerVal);
 }
 
-template<typename Callback, typename Context>
-bool Timer<Callback, Context>::reset(const TimerConfiguration& newTimerVal)
+template<typename Callback, typename ... Context>
+bool Timer<Callback, Context ...>::reset(const TimerConfiguration& newTimerVal)
 {
     stop();
     timerConfig_ = newTimerVal;
     return start();
 }
 
-template<typename Callback, typename Context>
-void Timer<Callback, Context>::destroy()
+template<typename Callback, typename ... Context>
+void Timer<Callback, Context ...>::destroy()
 {
     stop();
     timer_delete(tid_);
 }
 
-template<typename Callback, typename Context>
-void Timer<Callback, Context>::timerExpired() const
+template<typename Callback, typename ... Context>
+void Timer<Callback, Context ...>::timerExpired() const
 {
-    callback_(ctx_);
+   std::apply([this](auto&&... args) { callback_(args...) ;  }, ctx_);
 }
 
-template<typename Callback, typename Context>
-void Timer<Callback, Context>::syscallTimerExpiryFunction(union sigval sval)
+template<typename Callback, typename ... Context>
+void Timer<Callback, Context ...>::syscallTimerExpiryFunction(union sigval sval)
 {
     const Timer *timerCtx = reinterpret_cast<const Timer*>(sval.sival_ptr);
     timerCtx->timerExpired();
 }
 
-template<typename Callback, typename Context>
-bool Timer<Callback, Context>::setTime(const struct itimerspec& timerVal) const
+template<typename Callback, typename ... Context>
+bool Timer<Callback, Context ...>::setTime(const struct itimerspec& timerVal) const
 {
     return (0 == timer_settime(tid_, 0, &timerVal, NULL));
 }

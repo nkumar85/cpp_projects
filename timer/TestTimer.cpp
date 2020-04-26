@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <chrono>
+#include <thread>
 
 #include "Timer.hpp"
 
@@ -16,18 +17,21 @@ TimerConfiguration newTimerConfig = {std::chrono::seconds(6), std::chrono::nanos
 class TestTimer
 {
     public:
-        TestTimer() : ti_(std::bind(&TestTimer::timerCallbackClass, this, _1))
+        TestTimer() : ti_( [this](int i,int j)
+                        {
+                            timerCallbackClass(i);
+                        } )
         {
         }
 
-        void timerCallbackClass(int *k)
+        void timerCallbackClass(int k)
         { 
-            std::cout << "Class Timer expired : " << *k << "\n";
+           std::cout << "Class Timer expired : " << k << "\n";
         }
 
         void triggerStartTimer()
         {
-            ti_.create(&context_, timerConfig);
+            ti_.create(timerConfig,5,6);
             ti_.start();
         }
 
@@ -41,7 +45,7 @@ class TestTimer
         }
 
     private:
-        Timer<std::function<void(int*)>, int*> ti_;
+        Timer<std::function<void(int,int)>,int,int> ti_;
         int context_ = 200;
 };
 
@@ -57,6 +61,7 @@ auto timerCallbackLambda = [](int *k)
 
 int main()
 {
+    std::cout<<"main thread tid is "<<std::this_thread::get_id()<<std::endl;
     /* Non-class function usage */
     /* ------------------------ */
 //    int contextFunc = 10;
@@ -84,10 +89,10 @@ int main()
     TestTimer t_timer;
     t_timer.triggerStartTimer();
     sleep(10);
-
+/*
     t_timer.triggerResetTimer();
     sleep(10);
 
     t_timer.triggerStopTimer();
-    sleep(10);
+    sleep(10); */
 }
